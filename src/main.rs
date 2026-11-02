@@ -1,4 +1,5 @@
-
+use std::fs;
+use std::env;
 pub trait Compiler{
     // Compiles the source code into an intermediate representation or target code.
     fn compile(&mut self, source: &str);
@@ -24,8 +25,8 @@ struct LolCompiler{
         position: usize,
         lexeme: String,
         current_token: String,
-
         scopes: Vec<Vec<(String, String)>>,
+        html_output: String,
 }
 
 impl LexicalAnalyzer for LolCompiler {
@@ -232,6 +233,7 @@ impl SyntaxAnalyzer for LolCompiler{
     // Parse the LOLCODE program, which must start with #HAI and end with #KBYE
     fn parse_lolcode(&mut self){
         self.expect("#HAI");
+        self.html_output.push_str("<html>\n");
         self.enter_scope();
 
         if self.current_token().eq_ignore_ascii_case("#IHAZ"){
@@ -245,19 +247,23 @@ impl SyntaxAnalyzer for LolCompiler{
         }
         self.parse_body();
         self.expect("#KBYE");
+        self.html_output.push_str("</html>\n");
         self.exit_scope();
     }
     // Parse the head section of the LOLCODE program, which may contain a title
     fn parse_head(&mut self){
         self.expect("#MAEK HEAD");
+        self.html_output.push_str("<head>\n");
         if self.current_token().eq_ignore_ascii_case("#GIMMEH TITLE"){
             self.parse_title();
         }
         self.expect("#MKAY");
+        self.html_output.push_str("</head>\n")
     }
     // Parse the title section of the LOLCODE program, which is optional and must be followed by #OIC
     fn parse_title(&mut self){
         self.expect("#GIMMEH TITLE");
+        self.html_output.push_str("<title>");
         while !self.current_token().eq_ignore_ascii_case("#OIC"){
             if self.current_token().is_empty(){
                 println!("Syntax Error: expected #OIC, found end of input");
@@ -267,21 +273,28 @@ impl SyntaxAnalyzer for LolCompiler{
                 println!("Syntax Error: expected #OIC, found {}", self.current_token());
                 std::process::exit(1);
             }
+            self.html_output.push_str(&self.current_token());
+            self.html_output.push(' ');
             self.advance();
         }
         self.expect("#OIC");
+        self.html_output.push_str("</title>\n");
     }
     // Parse the comment section of the LOLCODE program, which is optional and must be followed by #TLDR
     fn parse_comment(&mut self){
         self.expect("#OBTW");
+        self.html_output.push_str("<!-- ");
         while !self.current_token().eq_ignore_ascii_case("#TLDR"){
             if self.current_token().is_empty(){
                 println!("Syntax Error: expected #TLDR, found end of input");
                 std::process::exit(1);
             }
+            self.html_output.push_str(&self.current_token());
+            self.html_output.push(' ');
             self.advance();
         }
         self.expect("#TLDR");
+        self.html_output.push_str(" -->\n")
     }
     // Parse the body section of the LOLCODE program, which may contain multiple paragraphs
     fn parse_body(&mut self){
@@ -314,6 +327,7 @@ impl SyntaxAnalyzer for LolCompiler{
     // Parse a paragraph section of the LOLCODE program, which must be followed by #MKAY
     fn parse_paragraph(&mut self){
         self.expect("#MAEK PARAGRAF");
+        self.html_output.push_str("<p>\n");
         self.enter_scope();
         if self.current_token().eq_ignore_ascii_case("#IHAZ"){
             self.parse_variable_define();
@@ -327,6 +341,7 @@ impl SyntaxAnalyzer for LolCompiler{
             self.parse_inner_paragraph();
         }
 
+        self.html_output.push_str("</p>\n");
         self.expect("#MKAY");
         self.exit_scope();
     }
@@ -339,7 +354,7 @@ impl SyntaxAnalyzer for LolCompiler{
             self.parse_bold();
         } else if self.current_token().eq_ignore_ascii_case("#NEWLINE"){
             self.parse_newline();
-        } else if self.current_token().eq_ignore_ascii_case("#GIMMEH LINX"){
+        } else if self.current_token().eq_ignore_ascii_case("#GIMMEH LINX"){ 
             self.parse_link();
         }else if self.current_token().eq_ignore_ascii_case("#MAEK LIST"){
             self.parse_list();
@@ -407,13 +422,15 @@ impl SyntaxAnalyzer for LolCompiler{
                 std::process::exit(1);
             }
         };
-        println!("{} = {}", variable_name, variable_value);
         self.advance();
+        self.html_output.push_str(&variable_value);
+        self.html_output.push(' ');
         self.expect("#OIC");
     }
     // Parse a bold section of the LOLCODE program, which must be followed by #OIC
     fn parse_bold(&mut self){
         self.expect("#GIMMEH BOLD");   
+        self.html_output.push_str("<b>");
         while !self.current_token().eq_ignore_ascii_case("#OIC"){
             if self.current_token().is_empty(){
                 println!("Syntax Error: expected #OIC, found end of input");
@@ -422,10 +439,12 @@ impl SyntaxAnalyzer for LolCompiler{
             self.parse_inner_text();
         }
         self.expect("#OIC");
+        self.html_output.push_str("</b>");
     }
     // Parse a list section of the LOLCODE program, which must be followed by #MKAY
     fn parse_list(&mut self){
         self.expect("#MAEK LIST");
+        self.html_output.push_str("<ul>\n");
         if !self.current_token().eq_ignore_ascii_case("#GIMMEH ITEM"){
             println!("Syntax Error: expected #GIMMEH ITEM, found {}", self.current_token());
             std::process::exit(1);
@@ -434,10 +453,14 @@ impl SyntaxAnalyzer for LolCompiler{
             self.parse_list_items();
         }
         self.expect("#MKAY");
+        self.html_output.push_str("</ul>\n");
+
     }
     // Parse a list item section of the LOLCODE program, which must be followed by #OIC
     fn parse_list_items(&mut self){
         self.expect("#GIMMEH ITEM");
+        self.html_output.push_str("<li>\n");
+
         if self.current_token().eq_ignore_ascii_case("#IHAZ"){
             self.parse_variable_define();
         }
@@ -449,6 +472,8 @@ impl SyntaxAnalyzer for LolCompiler{
             self.parse_inner_list();
         }
         self.expect("#OIC");
+        self.html_output.push_str("</li>\n");
+
     }
     // Parse the inner content of a list item, which may contain text, bold, or variable use
     fn parse_inner_list(&mut self){
@@ -467,6 +492,7 @@ impl SyntaxAnalyzer for LolCompiler{
     // Parse a link section of the LOLCODE program, which must be followed by #OIC
     fn parse_link(&mut self){
         self.expect("#GIMMEH LINX");
+        let mut address = String::new();
         while !self.current_token().eq_ignore_ascii_case("#OIC"){
             if self.current_token().is_empty(){
                 println!("Syntax Error: expected #OIC, found end of input");
@@ -476,18 +502,32 @@ impl SyntaxAnalyzer for LolCompiler{
                 println!("Syntax Error: expected #OIC, found {}", self.current_token());
                 std::process::exit(1);
             }
+            if !address.is_empty(){
+                address.push(' ');
+
+            }
+            address.push_str(&self.current_token());
             self.advance();
         }
         self.expect("#OIC");
+        self.html_output.push_str("<a href=\"");
+        self.html_output.push_str(&address);
+        self.html_output.push_str("\">");
+        self.html_output.push_str(&address);
+        self.html_output.push_str("</a>");
     }
 
     // Parse a newline section of the LOLCODE program, which must be followed by #MKAY
     fn parse_newline(&mut self){
         self.expect("#NEWLINE");
+        self.html_output.push_str("<br>\n");
+
     }
     // Parse normal text until the next annotation or end of input
     fn parse_text(&mut self){
         while !self.current_token().is_empty() && !self.current_token().starts_with('#'){
+            self.html_output.push_str(&self.current_token());
+            self.html_output.push(' ');
             self.advance();
         }
     }
@@ -498,21 +538,35 @@ impl SyntaxAnalyzer for LolCompiler{
 
 fn main(){
 
-let test_source: &str =         "#HAI
-    #MAEK PARAGRAF
-    #IHAZ inside #ITIZ Hello #MKAY
-    #GIMMEH VAR inside #OIC
+let test_source: &str =         
+    "#HAI
+    #OBTW This is my test page #TLDR
+    #MAEK HEAD
+    #GIMMEH TITLE My LOLCODE Page #OIC
     #MKAY
-    #GIMMEH VAR inside #OIC
+    #MAEK PARAGRAF
+    #IHAZ lastname #ITIZ Tran #MKAY
+    Hello #GIMMEH BOLD everyone #OIC
+    #NEWLINE
+    Visit #GIMMEH LINX www.towson.edu #OIC
+    #NEWLINE
+    #MAEK LIST
+    #GIMMEH ITEM Huy #GIMMEH VAR lastname #OIC #OIC
+    #GIMMEH ITEM Bo #GIMMEH VAR lastname #OIC #OIC
+    #MKAY
+    #MKAY
     #KBYE";
+     
     let mut compiler = LolCompiler {
         source: test_source.chars().collect(),
         position: 0,
         lexeme: String::new(),
         current_token: String::new(),
         scopes: Vec::new(),
+        html_output: String::new(),
     };
     compiler.parse();
-    println!("Syntax is valid!");
+    println!("{}", compiler.html_output);
+        println!("Syntax is valid!");
 
 }
