@@ -1,5 +1,7 @@
 use std::fs;
 use std::env;
+use std::process::Command;
+
 pub trait Compiler{
     // Compiles the source code into an intermediate representation or target code.
     fn compile(&mut self, source: &str);
@@ -537,36 +539,34 @@ impl SyntaxAnalyzer for LolCompiler{
 }
 
 fn main(){
+    let args: Vec<String> = env::args().collect();
 
-let test_source: &str =         
-    "#HAI
-    #OBTW This is my test page #TLDR
-    #MAEK HEAD
-    #GIMMEH TITLE My LOLCODE Page #OIC
-    #MKAY
-    #MAEK PARAGRAF
-    #IHAZ lastname #ITIZ Tran #MKAY
-    Hello #GIMMEH BOLD everyone #OIC
-    #NEWLINE
-    Visit #GIMMEH LINX www.towson.edu #OIC
-    #NEWLINE
-    #MAEK LIST
-    #GIMMEH ITEM Huy #GIMMEH VAR lastname #OIC #OIC
-    #GIMMEH ITEM Bo #GIMMEH VAR lastname #OIC #OIC
-    #MKAY
-    #MKAY
-    #KBYE";
-     
-    let mut compiler = LolCompiler {
-        source: test_source.chars().collect(),
-        position: 0,
-        lexeme: String::new(),
-        current_token: String::new(),
-        scopes: Vec::new(),
-        html_output: String::new(),
+    // Make the user entere one input file
+    if args.len() != 2 {
+        println!("Usage: lolcompiler.exe input.lol");
+        std::process::exit(1);
+    }
+
+    // Get the file name and make sure it end with .lol
+    let input_file = &args[1];
+    if !input_file.ends_with(".lol"){
+        println!("Error: input file name must have a .lol");
+        std::process::exit(1);
+    }
+    
+    // Read the LOlcode file into a string
+    let source = fs::read_to_string(input_file).expect("Error: could not read");
+    let mut compiler: LolCompiler = LolCompiler { source: source.chars().collect(), position: 0, lexeme: String::new(), current_token: String::new(), scopes: Vec::new(), html_output: String::new()
     };
-    compiler.parse();
-    println!("{}", compiler.html_output);
-        println!("Syntax is valid!");
 
+    // Compile the Lolcode
+    compiler.parse();
+    let output_file = input_file.trim_end_matches(".lol").to_string() + ".html";
+
+    // Let us know if it successful or unsuccessful
+    fs::write(&output_file, &compiler.html_output).expect("Error: could not create HTMl file");
+    println!("Successful!");
+    println!("Created: {}", output_file);
+    Command::new("cmd").args(["/C", "start", "", &output_file]).spawn().expect("Error: could not open");
+    
 }
