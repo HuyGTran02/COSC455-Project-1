@@ -195,43 +195,275 @@ impl LolCompiler{
 }
 // Implement the SyntaxAnalyzer trait for the LolCompiler struct
 impl SyntaxAnalyzer for LolCompiler{
+    // Parse the LOLCODE program, which must start with #HAI and end with #KBYE
     fn parse_lolcode(&mut self){
         self.expect("#HAI");   
+
+        if self.current_token().eq_ignore_ascii_case("#IHAZ"){
+            self.parse_variable_define();
+        }  
         while self.current_token().eq_ignore_ascii_case("#OBTW"){
             self.parse_comment();
         }
         if self.current_token().eq_ignore_ascii_case("#MAEK HEAD"){
             self.parse_head();
         }
+        self.parse_body();
         self.expect("#KBYE");
     }
+    // Parse the head section of the LOLCODE program, which may contain a title
+    fn parse_head(&mut self){
+        self.expect("#MAEK HEAD");
+        if self.current_token().eq_ignore_ascii_case("#GIMMEH TITLE"){
+            self.parse_title();
+        }
+        self.expect("#MKAY");
+    }
+    // Parse the title section of the LOLCODE program, which is optional and must be followed by #OIC
+    fn parse_title(&mut self){
+        self.expect("#GIMMEH TITLE");
+        while !self.current_token().eq_ignore_ascii_case("#OIC"){
+            if self.current_token().is_empty(){
+                println!("Syntax Error: expected #OIC, found end of input");
+                std::process::exit(1);
+            }
+            if self.current_token().starts_with('#'){
+                println!("Syntax Error: expected #OIC, found {}", self.current_token());
+                std::process::exit(1);
+            }
+            self.advance();
+        }
+        self.expect("#OIC");
+    }
+    // Parse the comment section of the LOLCODE program, which is optional and must be followed by #TLDR
+    fn parse_comment(&mut self){
+        self.expect("#OBTW");
+        while !self.current_token().eq_ignore_ascii_case("#TLDR"){
+            if self.current_token().is_empty(){
+                println!("Syntax Error: expected #TLDR, found end of input");
+                std::process::exit(1);
+            }
+            self.advance();
+        }
+        self.expect("#TLDR");
+    }
+    // Parse the body section of the LOLCODE program, which may contain multiple paragraphs
+    fn parse_body(&mut self){
+        while !self.current_token().eq_ignore_ascii_case("#KBYE"){
+            if self.current_token().is_empty(){
+                println!("Syntax Error: expected #KBYE, found end of input");
+                std::process::exit(1);
+            } else if !self.current_token().starts_with('#'){
+                self.parse_text();
+            } else if self.current_token().eq_ignore_ascii_case("#OBTW"){
+                self.parse_comment();
+            } else if self.current_token().eq_ignore_ascii_case("#MAEK PARAGRAF"){
+                self.parse_paragraph();
+            } else if self.current_token().eq_ignore_ascii_case("#GIMMEH BOLD"){
+                self.parse_bold();
+            } else if self.current_token().eq_ignore_ascii_case("#NEWLINE"){
+                self.parse_newline();
+            } else if self.current_token().eq_ignore_ascii_case("#GIMMEH LINX"){
+                self.parse_link();
+            } else if self.current_token().eq_ignore_ascii_case("#MAEK LIST"){
+                self.parse_list();
+            } else if self.current_token().eq_ignore_ascii_case("#GIMMEH VAR"){
+                self.parse_variable_use();
+            } else{
+                println!("Syntax Error: unexpected token {} for body", self.current_token());
+                std::process::exit(1);
+            }
+        }
+    }
+    // Parse a paragraph section of the LOLCODE program, which must be followed by #MKAY
+    fn parse_paragraph(&mut self){
+        self.expect("#MAEK PARAGRAF");
+        if self.current_token().eq_ignore_ascii_case("#IHAZ"){
+            self.parse_variable_define();
+        }
+        while !self.current_token().eq_ignore_ascii_case("#MKAY"){
+            if self.current_token().is_empty(){
+                println!("Syntax Error: expected #MKAY, found end of input");
+                std::process::exit(1);
+            }
+            self.parse_inner_paragraph();
+        }
+        self.expect("#MKAY");
+    }
+    // Parse the inner content of a paragraph, which may contain text, bold, newline, link, list, or variable use
+    fn parse_inner_paragraph(&mut self){
+        if !self.current_token().starts_with('#'){
+            self.parse_text();
 
-    fn parse_head(&mut self){}
-    fn parse_title(&mut self){}
-    fn parse_comment(&mut self){}
-    fn parse_body(&mut self){}
-    fn parse_paragraph(&mut self){}
-    fn parse_inner_paragraph(&mut self){}
-    fn parse_inner_text(&mut self){}
-    fn parse_variable_define(&mut self){}
-    fn parse_variable_use(&mut self){}
-    fn parse_bold(&mut self){}
-    fn parse_list(&mut self){}
-    fn parse_list_items(&mut self){}
-    fn parse_inner_list(&mut self){}
-    fn parse_link(&mut self){}
-    fn parse_newline(&mut self){}
-    fn parse_text(&mut self){}
+        } else if self.current_token().eq_ignore_ascii_case("#GIMMEH BOLD"){
+            self.parse_bold();
+        } else if self.current_token().eq_ignore_ascii_case("#NEWLINE"){
+            self.parse_newline();
+        } else if self.current_token().eq_ignore_ascii_case("#GIMMEH LINX"){
+            self.parse_link();
+        }else if self.current_token().eq_ignore_ascii_case("#MAEK LIST"){
+            self.parse_list();
+        }else if self.current_token().eq_ignore_ascii_case("#GIMMEH VAR"){
+            self.parse_variable_use();
+        }else{
+            println!("Syntax Error: unexpected token {} for inner paragraph", self.current_token());
+            std::process::exit(1);
+        }
+    }
+    // Parse the inner content of a list item, which may contain text, bold, or variable use
+    fn parse_inner_text(&mut self){
+        if !self.current_token().starts_with('#'){
+            self.parse_text();
+        } else if self.current_token().eq_ignore_ascii_case("#GIMMEH VAR"){
+            self.parse_variable_use();
+        } else{
+            println!("Syntax Error: unexpected token {} for inner text", self.current_token());
+            std::process::exit(1);
+        }
+    }
+
+    // Parse a variable definition section of the LOLCODE program, which must be followed by #ITIZ
+    fn parse_variable_define(&mut self){
+        self.expect("#IHAZ");
+        if self.current_token().is_empty() || self.current_token().starts_with('#'){
+            println!("Syntax Error: expected variable name, found end of input");
+            std::process::exit(1);
+        }
+        self.advance();
+        self.expect("#ITIZ");
+
+        while !self.current_token().eq_ignore_ascii_case("#MKAY"){
+            if self.current_token().is_empty(){
+                println!("Syntax Error: expected #MKAY, found end of input");
+                std::process::exit(1);
+            }
+            if self.current_token().starts_with('#'){
+                println!("Syntax Error: expected #MKAY, found {}", self.current_token());
+                std::process::exit(1);
+            }
+            self.advance();
+        }
+        self.expect("#MKAY");
+    }
+    // Parse a variable use section of the LOLCODE program, which must be followed by #OIC
+    fn parse_variable_use(&mut self){
+        self.expect("#GIMMEH VAR");
+        if self.current_token().is_empty() || self.current_token().starts_with('#'){
+            println!("Syntax Error: expected variable name, found end of input");
+            std::process::exit(1);
+        }
+        self.advance();
+        self.expect("#OIC");
+    }
+    // Parse a bold section of the LOLCODE program, which must be followed by #OIC
+    fn parse_bold(&mut self){
+        self.expect("#GIMMEH BOLD");   
+        while !self.current_token().eq_ignore_ascii_case("#OIC"){
+            if self.current_token().is_empty(){
+                println!("Syntax Error: expected #OIC, found end of input");
+                std::process::exit(1);
+            }
+            self.parse_inner_text();
+        }
+        self.expect("#OIC");
+    }
+    // Parse a list section of the LOLCODE program, which must be followed by #MKAY
+    fn parse_list(&mut self){
+        self.expect("#MAEK LIST");
+        if !self.current_token().eq_ignore_ascii_case("#GIMMEH ITEM"){
+            println!("Syntax Error: expected #GIMMEH ITEM, found {}", self.current_token());
+            std::process::exit(1);
+        }
+        while self.current_token().eq_ignore_ascii_case("#GIMMEH ITEM"){
+            self.parse_list_items();
+        }
+        self.expect("#MKAY");
+    }
+    // Parse a list item section of the LOLCODE program, which must be followed by #OIC
+    fn parse_list_items(&mut self){
+        self.expect("#GIMMEH ITEM");
+        if self.current_token().eq_ignore_ascii_case("#IHAZ"){
+            self.parse_variable_define();
+        }
+        while !self.current_token().eq_ignore_ascii_case("#OIC"){
+            if self.current_token().is_empty(){
+                println!("Syntax Error: expected #OIC, found end of input");
+                std::process::exit(1);
+            }
+            self.parse_inner_list();
+        }
+        self.expect("#OIC");
+    }
+    // Parse the inner content of a list item, which may contain text, bold, or variable use
+    fn parse_inner_list(&mut self){
+        if !self.current_token().starts_with('#'){
+            self.parse_text();
+        } else if self.current_token().eq_ignore_ascii_case("#GIMMEH BOLD"){
+            self.parse_bold();
+        } else if self.current_token().eq_ignore_ascii_case("#GIMMEH VAR"){
+            self.parse_variable_use();
+        } else{
+            println!("Syntax Error: unexpected token {} for inner list", self.current_token());
+            std::process::exit(1);
+
+        }
+    }
+    // Parse a link section of the LOLCODE program, which must be followed by #OIC
+    fn parse_link(&mut self){
+        self.expect("#GIMMEH LINX");
+        while !self.current_token().eq_ignore_ascii_case("#OIC"){
+            if self.current_token().is_empty(){
+                println!("Syntax Error: expected #OIC, found end of input");
+                std::process::exit(1);
+            }
+            if self.current_token().starts_with('#'){
+                println!("Syntax Error: expected #OIC, found {}", self.current_token());
+                std::process::exit(1);
+            }
+            self.advance();
+        }
+        self.expect("#OIC");
+    }
+
+    // Parse a newline section of the LOLCODE program, which must be followed by #MKAY
+    fn parse_newline(&mut self){
+        self.expect("#NEWLINE");
+    }
+    // Parse normal text until the next annotation or end of input
+    fn parse_text(&mut self){
+        while !self.current_token().is_empty() && !self.current_token().starts_with('#'){
+            self.advance();
+        }
+    }
 
 
 
 }
 
 fn main(){
-    let test_souce: &str = "#HAI #KBYE";
+let test_source: &str =
+    "#HAI
+    #OBTW This is a comment #TLDR
+    #MAEK HEAD
+    #GIMMEH TITLE Test Page #OIC
+    #MKAY
+    #MAEK PARAGRAF
+    #IHAZ lastname #ITIZ Tran #MKAY
+    Hello #GIMMEH VAR lastname #OIC
+    #NEWLINE
+    Visit #GIMMEH LINX www.towson.edu #OIC
+    #NEWLINE
+    This is #GIMMEH BOLD bold text #OIC
+    #MAEK LIST
+    #GIMMEH ITEM Huy #GIMMEH VAR lastname #OIC #OIC
+    #GIMMEH ITEM Marge #OIC
+    #MKAY
+    #MKAY
+    #KBYE";
+
 
     let mut compiler = LolCompiler {
-        source: test_souce.chars().collect(),
+        source: test_source.chars().collect(),
         position: 0,
         lexeme: String::new(),
         current_token: String::new(),
