@@ -247,6 +247,10 @@ impl SyntaxAnalyzer for LolCompiler{
         if self.current_token().eq_ignore_ascii_case("#MAEK HEAD"){
             self.parse_head();
         }
+        while self.current_token().eq_ignore_ascii_case("#IHAZ"){
+            self.parse_variable_define();
+        }
+        
         self.parse_body();
         self.expect("#KBYE");
         self.html_output.push_str("</html>\n");
