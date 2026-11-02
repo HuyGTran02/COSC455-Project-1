@@ -24,6 +24,8 @@ struct LolCompiler{
         position: usize,
         lexeme: String,
         current_token: String,
+
+        scopes: Vec<Vec<(String, String)>>,
 }
 
 impl LexicalAnalyzer for LolCompiler {
@@ -180,6 +182,7 @@ fn parse_text(&mut self);
 }
 // Implement the SyntaxAnalyzer trait for the LolCompiler struct
 impl LolCompiler{
+    // Advance to the next token and update the current token
     fn advance(&mut self){
         let token = self.next_token();
         self.set_current_token(token);
@@ -192,12 +195,44 @@ impl LolCompiler{
         }
         self.advance();
     }
+    // Enter a new scope by pushing a new vector onto the scopes stack
+    fn enter_scope(&mut self){
+        self.scopes.push(Vec::new());
+    }
+    // Exit the current scope by popping the top vector off the scopes stack
+    fn exit_scope(&mut self){
+        if !self.scopes.is_empty(){
+            self.scopes.pop();
+        }
+
+    }
+    // Save a variable in the current scope by adding it to the top vector on the scopes stack
+    fn save_variable(&mut self, name: String, value: String){
+        if let Some(current_scope) = self.scopes.last_mut(){
+            current_scope.push((name, value));
+        }
+    }
+    // Find a variable in the current and outer scopes by searching the scopes stack from top to bottom
+    fn find_variable(&self, name: &str) -> Option<String>{
+        for scope in self.scopes.iter().rev(){
+            for (var_name, var_value) in scope.iter().rev() {
+                if var_name == name{
+                    return Some(var_value.clone());
+                }
+            }
+        }
+        None
+    }
+
+
+
 }
 // Implement the SyntaxAnalyzer trait for the LolCompiler struct
 impl SyntaxAnalyzer for LolCompiler{
     // Parse the LOLCODE program, which must start with #HAI and end with #KBYE
     fn parse_lolcode(&mut self){
-        self.expect("#HAI");   
+        self.expect("#HAI");
+        self.enter_scope();
 
         if self.current_token().eq_ignore_ascii_case("#IHAZ"){
             self.parse_variable_define();
@@ -210,6 +245,7 @@ impl SyntaxAnalyzer for LolCompiler{
         }
         self.parse_body();
         self.expect("#KBYE");
+        self.exit_scope();
     }
     // Parse the head section of the LOLCODE program, which may contain a title
     fn parse_head(&mut self){
@@ -278,9 +314,11 @@ impl SyntaxAnalyzer for LolCompiler{
     // Parse a paragraph section of the LOLCODE program, which must be followed by #MKAY
     fn parse_paragraph(&mut self){
         self.expect("#MAEK PARAGRAF");
+        self.enter_scope();
         if self.current_token().eq_ignore_ascii_case("#IHAZ"){
             self.parse_variable_define();
         }
+
         while !self.current_token().eq_ignore_ascii_case("#MKAY"){
             if self.current_token().is_empty(){
                 println!("Syntax Error: expected #MKAY, found end of input");
@@ -288,7 +326,9 @@ impl SyntaxAnalyzer for LolCompiler{
             }
             self.parse_inner_paragraph();
         }
+
         self.expect("#MKAY");
+        self.exit_scope();
     }
     // Parse the inner content of a paragraph, which may contain text, bold, newline, link, list, or variable use
     fn parse_inner_paragraph(&mut self){
@@ -329,9 +369,11 @@ impl SyntaxAnalyzer for LolCompiler{
             println!("Syntax Error: expected variable name, found end of input");
             std::process::exit(1);
         }
+        let variable_name = self.current_token().clone();
         self.advance();
         self.expect("#ITIZ");
 
+        let mut variable_value = String::new();
         while !self.current_token().eq_ignore_ascii_case("#MKAY"){
             if self.current_token().is_empty(){
                 println!("Syntax Error: expected #MKAY, found end of input");
@@ -341,8 +383,13 @@ impl SyntaxAnalyzer for LolCompiler{
                 println!("Syntax Error: expected #MKAY, found {}", self.current_token());
                 std::process::exit(1);
             }
+            if !variable_value.is_empty(){
+                variable_value.push(' ');
+            }
+            variable_value.push_str(&self.current_token());
             self.advance();
         }
+        self.save_variable(variable_name, variable_value);
         self.expect("#MKAY");
     }
     // Parse a variable use section of the LOLCODE program, which must be followed by #OIC
@@ -352,6 +399,15 @@ impl SyntaxAnalyzer for LolCompiler{
             println!("Syntax Error: expected variable name, found end of input");
             std::process::exit(1);
         }
+        let variable_name = self.current_token();
+
+        let variable_value = match self.find_variable(&variable_name){
+            Some(value) => value, None => {
+                println!("Static Semantic Error: variable {} not define", variable_name);
+                std::process::exit(1);
+            }
+        };
+        println!("{} = {}", variable_name, variable_value);
         self.advance();
         self.expect("#OIC");
     }
@@ -441,32 +497,20 @@ impl SyntaxAnalyzer for LolCompiler{
 }
 
 fn main(){
-let test_source: &str =
-    "#HAI
-    #OBTW This is a comment #TLDR
-    #MAEK HEAD
-    #GIMMEH TITLE Test Page #OIC
-    #MKAY
+
+let test_source: &str =         "#HAI
     #MAEK PARAGRAF
-    #IHAZ lastname #ITIZ Tran #MKAY
-    Hello #GIMMEH VAR lastname #OIC
-    #NEWLINE
-    Visit #GIMMEH LINX www.towson.edu #OIC
-    #NEWLINE
-    This is #GIMMEH BOLD bold text #OIC
-    #MAEK LIST
-    #GIMMEH ITEM Huy #GIMMEH VAR lastname #OIC #OIC
-    #GIMMEH ITEM Marge #OIC
+    #IHAZ inside #ITIZ Hello #MKAY
+    #GIMMEH VAR inside #OIC
     #MKAY
-    #MKAY
+    #GIMMEH VAR inside #OIC
     #KBYE";
-
-
     let mut compiler = LolCompiler {
         source: test_source.chars().collect(),
         position: 0,
         lexeme: String::new(),
         current_token: String::new(),
+        scopes: Vec::new(),
     };
     compiler.parse();
     println!("Syntax is valid!");
